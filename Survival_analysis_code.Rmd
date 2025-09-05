@@ -1,0 +1,339 @@
+---
+title: "存活期末"
+author: "M122040017 吳俞憲"
+date: "2024-05-20"
+output:
+  word_document: default
+  html_document: default
+  pdf_document: default
+---
+
+
+```{r setup, include=FALSE}
+library(survival)
+library(survminer)
+library(lmtest)
+library(car)
+data1 <- read.csv("./膀胱癌.csv")
+```
+
+
+
+# 1.選擇變數
+
+```{r}
+cancer <- data1$Cancer.Type.Detailed
+age <- data1$Age.at.Which.Sequencing.was.Reported..Years.
+Genome  <- data1$Fraction.Genome.Altered
+MSI <- data1$MSI.Score
+Mutation <- data1$Mutation.Count
+event <- data1$Overall.Survival..Months.since.Sequencing.
+time <- data1$Overall.Survival.Status.since.Sequencing
+sex <- data1$Sex
+tmb <- data1$TMB..nonsynonymous.
+```
+
+
+
+## 1.2 處理反映變數
+
+```{r}
+time_new <- ifelse(time == "1:DECEASED", 1,0)
+
+```
+
+
+## 1.3 合併資料 (截止時間設為6年)
+
+```{r}
+data2 <- data.frame(event,time_new,cancer,age,Genome,MSI,Mutation,sex,tmb)
+data2 <- na.omit(data2)
+all <- subset(data2, event<72)
+```
+
+
+
+# 2. KM survival
+
+```{r}
+fit_km<-survfit(Surv(event, time_new)~1 , all)
+ggsurvplot(fit_km, data = all)
+```
+
+```{r}
+fit_km <- survfit(Surv(event, time_new) ~ 1, data = all)
+
+
+summary_km <- summary(fit_km)
+
+print(summary_km)
+
+
+s_0.5 <- approx(summary_km$time, summary_km$surv, xout = 0.5)$y
+
+
+print(s_0.5)
+
+```
+
+NA
+```{r}
+fit_na <- survfit(Surv(event, time_new) ~ 1, data = all)
+ggsurvplot(fit_na, data = all, fun = "cumhaz")
+
+```
+
+
+
+
+
+
+
+
+
+
+# log rank test
+
+##看圖
+
+```{r}
+fit1<-survfit(Surv(event, time_new)~factor(cancer) , all)
+ggsurvplot(fit1, data = all)
+```
+
+
+```{r}
+fit2 <- survdiff(Surv(event, time_new)~factor(cancer), all)
+fit2
+```
+
+# 2. ph model (解釋係數)
+
+```{r}
+ph <- coxph(Surv(event, time_new )~factor(cancer)+factor(sex)+age+Genome+MSI+Mutation, all )
+summary(ph)
+```
+
+## 共線性
+
+```{r}
+vif_values <- suppressWarnings(vif(ph))
+print(vif_values)
+```
+
+```{r}
+ph_1 <- coxph(Surv(event, time_new )~factor(cancer)+factor(sex)+age+Genome+MSI+Mutation, all )
+vif_values <- suppressWarnings(vif(ph_1))
+print(vif_values)
+```
+
+```{r}
+summary(ph_1)
+
+
+```
+
+
+# 3. local test
+
+## cancer是否有影響
+
+### LRT
+```{r}
+fit_cancer <- coxph(Surv(event, time_new )~factor(sex)+age+Genome+MSI+Mutation, all )
+lrt <- lrtest(fit_cancer, ph_1)
+print(lrt)
+```
+
+### WALD
+
+```{r}
+wald_result <- waldtest(ph_1, terms = "factor(cancer)")
+print(wald_result)
+```
+
+## MSI
+
+### LRT
+
+```{r}
+fit_MSI <- coxph(Surv(event, time_new )~factor(cancer)+factor(sex)+age+Genome+Mutation, all )
+lrt <- lrtest(ph_1, fit_MSI)
+print(lrt)
+
+```
+
+### WALD
+
+```{r}
+wald_result <- waldtest(ph_1, terms = "MSI")
+print(wald_result)
+```
+
+```{r}
+only_MSI <- coxph(Surv(event, time_new )~MSI, all )
+summary(only_MSI)
+```
+
+
+
+
+##  sex
+
+### LRT
+
+```{r}
+fit_sex <- coxph(Surv(event, time_new )~factor(cancer)+age+Genome+MSI+Mutation, all )
+lrt <- lrtest(ph_1, fit_sex)
+print(lrt)
+```
+
+```{r}
+wald_result <- waldtest(ph_1, terms = "factor(sex)")
+print(wald_result)
+```
+
+
+
+
+### LRT
+
+```{r}
+fit_sex <-coxph(Surv(event, time_new )~factor(cancer)+age+Genome+MSI+Mutation, all )
+lrt <- lrtest(ph, fit_sex)
+print(lrt)
+```
+
+### Wald 
+
+```{r}
+wald_result <- waldtest(ph, terms = "factor(sex)")
+print(wald_result)
+
+```
+
+# 3.1 最終模型
+
+```{r}
+ph_final <- coxph(Surv(event, time_new )~age+Genome+Mutation, all)
+summary(ph_final)
+```
+
+# 4.1 有沒有滿足ph model 假設
+
+## Schoenfeld
+
+
+
+```{r}
+ph_final <- coxph(Surv(event, time_new )~age+Genome+Mutation, all)
+ph_zph <- cox.zph(ph_final)
+ph_zph
+```
+
+```{r}
+plot(ph_zph)
+
+
+
+
+```
+
+# 4.2  breslow's Baseline
+
+```{r}
+cum_hazard <- basehaz(ph_final)
+plot(cum_hazard$time, cum_hazard$hazard, ylab = "baseline cumulative hazard ",xlab= "time" )
+```
+
+# Cox sneil
+
+```{r}
+rm <- residuals(ph_final, 'martingale')
+r <- all$time_new-rm
+r_fit <- survfit(Surv(r,all$time_new)~1, type='fh2')
+```
+
+
+```{r}
+r=sort(r)
+plot(r,-log(r_fit$surv), ylab="")
+abline(a = 0, b = 1, lty = 2, col = "red")
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
