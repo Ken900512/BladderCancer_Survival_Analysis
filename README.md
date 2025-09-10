@@ -65,6 +65,6 @@ Cox proportional hazards model : 利用Cox模型判斷變數與存活的關聯�
 BladderCancer_Survival_Analysis    
 │── README.md  
 │── Survival_analysis_main.pdf # 書面報告  
-│── Survival_analysis_code.ipynb # 程式碼  
+│── Survival_analysis_code.Rmd # 程式碼  
 │── Survival_analysis_reort.pdf  # 簡報  
 │── bladder.csv #資料集
